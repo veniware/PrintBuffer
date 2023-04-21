@@ -6,8 +6,8 @@ using System.Net.Sockets;
 using System.Threading;
 
 internal class Program {
-
-    static readonly string CONFIG_FILE = "printbuffer.cfg";
+    private static readonly object logSync = new object();
+    private static readonly string CONFIG_FILE = "printbuffer.cfg";
 
     static void Main(string[] args) {
 
@@ -40,8 +40,6 @@ internal class Program {
         while (true) {
             Console.ReadLine();
         }
-
-        //Listen(9100, new IPEndPoint(IPAddress.Parse("192.168.115.58"), 9100));
     }
 
     static void Listen(int port, IPEndPoint endPoint) {
@@ -59,23 +57,38 @@ internal class Program {
     }
 
     static void Serve(TcpClient client, IPEndPoint endPoint) {
-        Console.WriteLine($"New client: {client.Client.RemoteEndPoint}");
+        try {
+            Console.WriteLine($"New client: {client.Client.RemoteEndPoint}");
 
-        NetworkStream downStream = client.GetStream();
+            NetworkStream downStream = client.GetStream();
 
-        byte[] bytes = new byte[1024];
-        List<byte[]> list = new List<byte[]>();
-        int length;
+            byte[] bytes = new byte[1024];
+            List<byte[]> list = new List<byte[]>();
+            int length;
 
-        while ((length = downStream.Read(bytes, 0, bytes.Length)) != 0) {
-            byte[] crop = new byte[length];
-            Array.Copy(bytes, crop, length);
-            list.Add(crop);
+            while ((length = downStream.Read(bytes, 0, bytes.Length)) != 0) {
+                byte[] crop = new byte[length];
+                Array.Copy(bytes, crop, length);
+                list.Add(crop);
+            }
+
+            client.Close();
+
+            Repeat(list, endPoint);
+
+        } catch (Exception ex) {
+            lock (logSync)
+                try {
+                    using (StreamWriter writer = new StreamWriter("error.log", true, System.Text.Encoding.UTF8)) {
+                        writer.Write(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        writer.WriteLine($"\t{ex}");
+                    }
+                } catch { }
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine(ex);
+            Console.ResetColor();
         }
-
-        client.Close();
-
-        Repeat(list, endPoint);
     }
 
     static void Repeat(List<byte[]> list, IPEndPoint endPoint) {
@@ -96,8 +109,6 @@ internal class Program {
         }
 
         repeater.Close();
-
-        Console.WriteLine("Done!");
     }
 
 }
